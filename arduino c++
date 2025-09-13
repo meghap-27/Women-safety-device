@@ -1,0 +1,109 @@
+#include <HardwareSerial.h>
+
+#define BUTTON_PIN 4  
+HardwareSerial A9G(2); 
+
+String phoneNumber = "+917019504641";  
+
+void setup() {
+  Serial.begin(115200);
+  A9G.begin(115200, SERIAL_8N1, 16, 17);  
+
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  Serial.println("Initializing Emergency System...");
+
+  A9G.println("AT");
+  delay(1000);
+
+  A9G.println("AT+GPS=1");
+  delay(2000);
+
+  A9G.println("AT+CLIP=1");
+  delay(1000);
+  A9G.println("ATS0=1");  
+  delay(1000);
+
+  Serial.println("System Ready");
+}
+
+void loop() {
+   if (digitalRead(BUTTON_PIN) == LOW) {
+        // ... (your existing code for making call and SMS) ...
+
+        Serial.println("ALERT_TRIGGERED"); // <<-- Add this line
+
+        delay(10000);
+    }
+
+  if (digitalRead(BUTTON_PIN) == LOW) {
+    Serial.println("Emergency Alert Activated!");
+
+    makeCall();   
+    sendGPS();    
+
+    delay(10000); // prevent multiple triggers
+  }
+}
+
+void makeCall() {
+  Serial.println("Making Emergency Call...");
+  A9G.print("ATD");
+  A9G.print(phoneNumber);
+  A9G.println(";");
+
+  delay(20000);   // allow 20s for talking
+
+  A9G.println("ATH");  // Hang up call
+  Serial.println("Call Ended.");
+}
+
+void sendGPS() {
+  Serial.println("Getting GPS Location...");
+  A9G.println("AT+LOCATION=2");  
+  delay(5000);
+
+  String gpsData = "";
+  while (A9G.available()) {
+    gpsData += A9G.readString();
+  }
+  Serial.println(gpsData);
+
+  if (gpsData.indexOf("+LOCATION:") != -1) {
+    String mapLink = formatMapLink(gpsData);
+    sendSMS(mapLink);
+  } else {
+    Serial.println("GPS Not Fixed. Try Again.");
+  }
+}
+
+String formatMapLink(String gpsData) {
+  int latStart = gpsData.indexOf(":") + 2;
+  int commaPos = gpsData.indexOf(",", latStart);
+  int lonStart = commaPos + 1;
+
+  String latitude = gpsData.substring(latStart, commaPos);
+  String longitude = gpsData.substring(lonStart, gpsData.indexOf("\n", lonStart));
+
+  return "https://www.google.com/maps?q=" + latitude + "," + longitude;
+}
+
+void sendSMS(String mapLink) {
+  Serial.println("Sending Emergency SMS...");
+  A9G.println("AT+CMGF=1");  // text mode
+  delay(500);
+
+  A9G.print("AT+CMGS=\"");
+  A9G.print(phoneNumber);
+  A9G.println("\"");
+  delay(1000);
+
+  A9G.println("EMERGENCY ALERT!");
+  A9G.println("Help needed immediately!");
+  A9G.println("Location: " + mapLink);
+
+  A9G.write(26);  // CTRL+Z
+  delay(5000);
+
+  Serial.println("SMS Sent!");
+}
